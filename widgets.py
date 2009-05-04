@@ -7,11 +7,18 @@ from django.utils.text import truncate_words
 from django.contrib import admin
 from django.db import models
 
-import operator
+import operator,settings
 from django.contrib.auth.models import Message
 from django.http import HttpResponse, HttpResponseNotFound
 from django.db.models.query import QuerySet
 from django.utils.encoding import smart_str
+
+from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
+from django.utils.translation import ugettext as _
+from django.utils.encoding import force_unicode 
+from django.utils.html import escape
+from django.utils.safestring import mark_safe
+
 
 class ForeignKeySearchInput(forms.HiddenInput):
 	"""
@@ -20,11 +27,12 @@ class ForeignKeySearchInput(forms.HiddenInput):
 	"""
 	class Media:
 		css = {
-			'all': ('jquery.autocomplete.css',)
+			'all': ('%s/jquery.autocomplete.css' % settings.MEDIA_URL,)
 		}
 		js = (
-			'js/jquery.js',
-			'js/jquery.autocomplete.js'
+			'%s/js/jquery.js' % settings.MEDIA_URL,
+			'%s/js/jquery.autocomplete.js' % settings.MEDIA_URL,
+			'%s/autocomplete/AutocompleteObjectLookups.js ' % settings.MEDIA_URL
 		)
 
 	def label_for_value(self, value):
@@ -48,6 +56,13 @@ class ForeignKeySearchInput(forms.HiddenInput):
 		return rendered + mark_safe(u'''
 <input type="text" id="lookup_%(name)s" value="%(label)s" size="40"/>
 <script type="text/javascript">
+
+function addItem_id_%(name)s(id, name) {
+	
+	$("#id_%(name)s").val( id );
+	$("#lookup_%(name)s").val( name );
+}
+
 $(document).ready(function(){
 
 function liFormat_%(name)s (row, i, num) {
@@ -85,7 +100,7 @@ $("#lookup_%(name)s").autocomplete("../search/", {
 
 		''') % {
 			'search_fields': ','.join(self.search_fields),
-			'admin_media_prefix': settings.ADMIN_MEDIA_PREFIX,
+			'MEDIA_URL': settings.MEDIA_URL,
 			'model_name': self.rel.to._meta.module_name,
 			'app_label': self.rel.to._meta.app_label,
 			'label': label,
@@ -101,49 +116,62 @@ class ManyToManySearchInput(forms.MultipleHiddenInput):
 	"""
 	class Media:
 		css = {
-			'all': ('jquery.autocomplete.css',)
+			'all': ('%s/jquery.autocomplete.css' % settings.MEDIA_URL,)
 		}
 		js = (
-			'js/jquery.js',
-			'js/jquery.autocomplete.js'
+			'%s/js/jquery.js' % settings.MEDIA_URL,
+			'%s/js/jquery.autocomplete.js' % settings.MEDIA_URL,
+			'%s/autocomplete/AutocompleteObjectLookups.js ' % settings.MEDIA_URL
 		)
+
 
 	def __init__(self, rel, search_fields, attrs=None):
 		self.rel = rel
 		self.search_fields = search_fields
 		super(ManyToManySearchInput, self).__init__(attrs)
-		self.help_text = ''
+		self.help_text = u"Для поиска укажите хотя бы два символа"
 
 	def render(self, name, value, attrs=None):
 		if attrs is None:
 			attrs = {}
 
+		if value is None:
+ 			value = []
+            
 		label = ''
 		selected = ''
 		for id in value:
 			obj = self.rel.to.objects.get(id=id)
 
 			selected = selected + mark_safe(u"""
-				<div class="to_delete" >
-					<img src="/media/common/admin_media/img/admin/icon_deletelink.gif"/> 
-					<input type="hidden" name="%(name)s" value="%(value)s"/>
-					%(label)s
-				</div>""" 
+				<div class="to_delete deletelink" ><input type="hidden" name="%(name)s" value="%(value)s"/>%(label)s</div>""" 
 				)%{
 					'label': obj.name,
 					'name': name,
 					'value': obj.id,
-			}
+		}
 
 		
 		return mark_safe(u'''
 <input type="text" id="lookup_%(name)s" value="" size="40"/>%(label)s
+<div style="float:left; padding-left:105px; width:300px;">
+<font  style="color:#999999;font-size:10px !important;">%(help_text)s</font>
+<div id="box_%(name)s" style="padding-left:20px;cursor:pointer;">
 
-<div id="box_%(name)s" style="float:left; padding-left:120px; width:300px; cursor:pointer;">
 	%(selected)s
-</div>
+</div></div>
 
 <script type="text/javascript">
+
+function addItem_id_%(name)s(id,name) {
+	// --- добавляю элемент из попапа ---
+	$('<div class="to_delete deletelink"><input type="hidden" name="%(name)s" value="'+id+'"/>'+name+'</div>')
+	.click(function () {$(this).remove();})
+	.appendTo("#box_%(name)s");
+
+	$("#lookup_%(name)s").val( '' );
+}
+
 $(document).ready(function(){
 
 	function liFormat_%(name)s (row, i, num) {
@@ -154,16 +182,13 @@ $(document).ready(function(){
 		if( li == null ) return
 
 		// --- Создаю новый элемент ---
-		$('<div class="to_delete" ><img src="/media/common/admin_media/img/admin/icon_deletelink.gif"/> <input type="hidden" name="%(name)s" value="'+li.extra[0]+'"/>'
-			+li.selectValue
-			+'</div>'
-		)
+		$('<div class="to_delete deletelink"><input type="hidden" name="%(name)s" value="'+li.extra[0]+'"/>'+li.selectValue+'</div>')
 		.click(function () {$(this).remove();})
 		.appendTo("#box_%(name)s");
 
 		$("#lookup_%(name)s").val( '' );
 	}
-	
+		
 	// --- Автозаполнение ---
 	$("#lookup_%(name)s").autocomplete("../search/", {
 			extraParams: {
@@ -189,13 +214,13 @@ $(document).ready(function(){
 
 		''') % {
 			'search_fields': ','.join(self.search_fields),
-			'admin_media_prefix': settings.ADMIN_MEDIA_PREFIX,
 			'model_name': self.rel.to._meta.module_name,
 			'app_label': self.rel.to._meta.app_label,
 			'label': label,
 			'name': name,
 			'value': value,
 			'selected':selected,
+			'help_text':self.help_text
 		}
 
 class AutocompleteModelAdmin(admin.ModelAdmin):
@@ -250,17 +275,86 @@ class AutocompleteModelAdmin(admin.ModelAdmin):
 		return HttpResponseNotFound()
 
 	def formfield_for_dbfield(self, db_field, **kwargs):
-		#	Overrides the default widget for Foreignkey fields if they are
-		#	specified in the related_search_fields class attribute.
-		if isinstance(db_field, models.ForeignKey) and \
-				db_field.name in self.related_search_fields:
+		# For ForeignKey use a special Autocomplete widget.
+		if isinstance(db_field, models.ForeignKey) and db_field.name in self.related_search_fields:
 			kwargs['widget'] = ForeignKeySearchInput(db_field.rel,
 									self.related_search_fields[db_field.name])
-		
-		if isinstance(db_field, models.ManyToManyField)and \
-				db_field.name in self.related_search_fields:
+
+			# extra HTML to the end of the rendered output.
+			formfield = db_field.formfield(**kwargs)
+			# Don't wrap raw_id fields. Their add function is in the popup window.
+			if not db_field.name in self.raw_id_fields:
+				# formfield can be None if it came from a OneToOneField with
+				# parent_link=True
+				if formfield is not None:
+					formfield.widget = AutocompleteWidgetWrapper(formfield.widget, db_field.rel, self.admin_site)
+			return formfield
+					
+		# For ManyToManyField use a special Autocomplete widget.
+		if isinstance(db_field, models.ManyToManyField)and db_field.name in self.related_search_fields:
 			kwargs['widget'] = ManyToManySearchInput(db_field.rel,
 									self.related_search_fields[db_field.name])
 			db_field.help_text = ''
 
+			# extra HTML to the end of the rendered output.
+			formfield = db_field.formfield(**kwargs)
+			# Don't wrap raw_id fields. Their add function is in the popup window.
+			if not db_field.name in self.raw_id_fields:
+				# formfield can be None if it came from a OneToOneField with
+				# parent_link=True
+				if formfield is not None:
+					formfield.widget = AutocompleteWidgetWrapper(formfield.widget, db_field.rel, self.admin_site)
+			return formfield
+		
+		
 		return super(AutocompleteModelAdmin, self).formfield_for_dbfield(db_field, **kwargs)
+	
+	def response_add(self, request, obj, post_url_continue='../%s/'):
+		"""
+		Determines the HttpResponse for the add_view stage.
+		"""
+		opts = obj._meta
+		pk_value = obj._get_pk_val()
+		
+		msg = _('The %(name)s "%(obj)s" was added successfully.') % {'name': force_unicode(opts.verbose_name), 'obj': force_unicode(obj)}
+		# Here, we distinguish between different save types by checking for
+		# the presence of keys in request.POST.
+		if request.POST.has_key("_continue"):
+			self.message_user(request, msg + ' ' + _("You may edit it again below."))
+			if request.POST.has_key("_popup"):
+				post_url_continue += "?_popup=%s" % request.POST.get('_popup')
+			return HttpResponseRedirect(post_url_continue % pk_value)
+		
+		if request.POST.has_key("_popup"):
+			#htturn response to Autocomplete PopUp
+			if request.POST.has_key("_popup"):
+				return HttpResponse('<script type="text/javascript">opener.dismissAutocompletePopup(window, "%s", "%s");</script>' % (escape(pk_value), escape(obj)))
+						
+		elif request.POST.has_key("_addanother"):
+			self.message_user(request, msg + ' ' + (_("You may add another %s below.") % force_unicode(opts.verbose_name)))
+			return HttpResponseRedirect(request.path)
+		else:
+			self.message_user(request, msg)
+
+			# Figure out where to redirect. If the user has change permission,
+			# redirect to the change-list page for this object. Otherwise,
+			# redirect to the admin index.
+			if self.has_change_permission(request, None):
+				post_url = '../'
+			else:
+				post_url = '../../../'
+			return HttpResponseRedirect(post_url)
+	
+class AutocompleteWidgetWrapper(RelatedFieldWidgetWrapper):
+	def render(self, name, value, *args, **kwargs):
+		rel_to = self.rel.to
+		related_url = '../../../%s/%s/' % (rel_to._meta.app_label, rel_to._meta.object_name.lower())
+		self.widget.choices = self.choices
+		output = [self.widget.render(name, value, *args, **kwargs)]
+		if rel_to in self.admin_site._registry: # If the related object has an admin interface:
+			# TODO: "id_" is hard-coded here. This should instead use the correct
+			# API to determine the ID dynamically.
+			output.append(u'<a href="%sadd/" class="add-another" id="add_id_%s" onclick="return showAutocompletePopup(this);"> ' % \
+				(related_url, name))
+			output.append(u'<img src="%simg/admin/icon_addlink.gif" width="10" height="10" alt="%s"/></a>' % (settings.ADMIN_MEDIA_PREFIX, _('Add Another')))
+		return mark_safe(u''.join(output))
