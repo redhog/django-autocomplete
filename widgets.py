@@ -18,7 +18,7 @@ from django.utils.translation import ugettext as _
 from django.utils.encoding import force_unicode 
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
-
+from django.utils.datastructures import MultiValueDict, MergeDict
 
 class ForeignKeySearchInput(forms.HiddenInput):
 	"""
@@ -36,9 +36,12 @@ class ForeignKeySearchInput(forms.HiddenInput):
 		)
 
 	def label_for_value(self, value):
+		rel_name = self.search_fields[0].split('__')[0]
+		
 		key = self.rel.get_related_field().name
 		obj = self.rel.to._default_manager.get(**{key: value})
-		return truncate_words(obj, 14)
+		
+		return getattr(obj,rel_name)
 
 	def __init__(self, rel, search_fields, attrs=None):
 		self.rel = rel
@@ -76,7 +79,7 @@ function selectItem_%(name)s(li) {
 	$("#id_%(name)s").val( sValue );
 }
 
-// --- Автозаполнение ---
+// --- Autocomplete ---
 $("#lookup_%(name)s").autocomplete("../search/", {
 		extraParams: {
 		search_fields: '%(search_fields)s',
@@ -94,7 +97,7 @@ $("#lookup_%(name)s").autocomplete("../search/", {
 	maxItemsToShow:10,
 	onItemSelect:selectItem_%(name)s
 }); 
-// --- Автозаполнение ---
+// --- Autocomplete ---
 });
 </script>
 
@@ -129,7 +132,18 @@ class ManyToManySearchInput(forms.MultipleHiddenInput):
 		self.rel = rel
 		self.search_fields = search_fields
 		super(ManyToManySearchInput, self).__init__(attrs)
+#		self.help_text = u"To search, enter at least two characters"
 		self.help_text = u"Для поиска укажите хотя бы два символа"
+	
+	def value_from_datadict(self, data, files, name):
+		if isinstance(data, (MultiValueDict, MergeDict)):
+			res = data.getlist(name)
+		else:
+			res = data.get(name, None)
+		print name, res
+		for id in res:
+			print self.rel.to.objects.get(pk=id)
+		return res
 
 	def render(self, name, value, attrs=None):
 		if attrs is None:
@@ -140,13 +154,15 @@ class ManyToManySearchInput(forms.MultipleHiddenInput):
             
 		label = ''
 		selected = ''
+		rel_name = self.search_fields[0].split('__')[0]
+		
 		for id in value:
-			obj = self.rel.to.objects.get(id=id)
-
+			obj = self.rel.to.objects.get(pk=id)
+		
 			selected = selected + mark_safe(u"""
 				<div class="to_delete deletelink" ><input type="hidden" name="%(name)s" value="%(value)s"/>%(label)s</div>""" 
 				)%{
-					'label': obj.name,
+					'label': getattr(obj,rel_name),
 					'name': name,
 					'value': obj.id,
 		}
@@ -164,7 +180,7 @@ class ManyToManySearchInput(forms.MultipleHiddenInput):
 <script type="text/javascript">
 
 function addItem_id_%(name)s(id,name) {
-	// --- добавляю элемент из попапа ---
+	// --- add new element from popup ---
 	$('<div class="to_delete deletelink"><input type="hidden" name="%(name)s" value="'+id+'"/>'+name+'</div>')
 	.click(function () {$(this).remove();})
 	.appendTo("#box_%(name)s");
@@ -181,7 +197,7 @@ $(document).ready(function(){
 	function selectItem_%(name)s(li) {
 		if( li == null ) return
 
-		// --- Создаю новый элемент ---
+		// --- new element ---
 		$('<div class="to_delete deletelink"><input type="hidden" name="%(name)s" value="'+li.extra[0]+'"/>'+li.selectValue+'</div>')
 		.click(function () {$(this).remove();})
 		.appendTo("#box_%(name)s");
@@ -189,7 +205,7 @@ $(document).ready(function(){
 		$("#lookup_%(name)s").val( '' );
 	}
 		
-	// --- Автозаполнение ---
+	// --- Autocomplete ---
 	$("#lookup_%(name)s").autocomplete("../search/", {
 			extraParams: {
 			search_fields: '%(search_fields)s',
@@ -207,7 +223,7 @@ $(document).ready(function(){
 		maxItemsToShow:10,
 		onItemSelect:selectItem_%(name)s
 	}); 
-// --- удаление изначально выбраных элементов ---
+// --- delete initial element ---
 	$(".to_delete").click(function () {$(this).remove();});
 });
 </script>
@@ -266,11 +282,12 @@ class AutocompleteModelAdmin(admin.ModelAdmin):
 					q = q | models.Q( **{str(name):query} )
 				else:
 					q = models.Q( **{str(name):query} )
-			#print 'q = ', q
 			qs = model.objects.filter( q )
-			#print 'qs = ', qs
 			
-			data = ''.join([u'%s|%s\n' % (f.__unicode__(), f.pk) for f in qs])
+			rel_name = field_name.split('__')[0]			
+			
+			data = ''.join([u'%s|%s\n' % (getattr(f,rel_name), f.pk) for f in qs])
+#			data = ''.join([u'%s|%s\n' % (f.__unicode__(), f.pk) for f in qs])
 			return HttpResponse(data)
 		return HttpResponseNotFound()
 
@@ -281,6 +298,9 @@ class AutocompleteModelAdmin(admin.ModelAdmin):
 									self.related_search_fields[db_field.name])
 
 			# extra HTML to the end of the rendered output.
+			if 'request' in kwargs.keys():
+				kwargs.pop('request')
+							
 			formfield = db_field.formfield(**kwargs)
 			# Don't wrap raw_id fields. Their add function is in the popup window.
 			if not db_field.name in self.raw_id_fields:
@@ -297,6 +317,9 @@ class AutocompleteModelAdmin(admin.ModelAdmin):
 			db_field.help_text = ''
 
 			# extra HTML to the end of the rendered output.
+			if 'request' in kwargs.keys():
+				kwargs.pop('request')
+							
 			formfield = db_field.formfield(**kwargs)
 			# Don't wrap raw_id fields. Their add function is in the popup window.
 			if not db_field.name in self.raw_id_fields:
