@@ -1,0 +1,43 @@
+# AutoComplete for ForeignKey and ManyToManyField
+uses same syntax as the search for django-admin
+
+requirements
+ * query.js (http://jquery.com/)
+ * query.autocomplete.js
+
+## Example
+
+
+use a fairly simple
+*models.py*
+    class Type (models.Model):
+    title = models.CharField()
+    
+    class Celebrity(models.Model):
+        name = models.CharField()
+
+    class Film(models.Model):
+        type    = models.ForeignKey( Type )
+        director= models.ManyToManyField( Celebrity, related_name="director")
+        actor   = models.ManyToManyField( Celebrity, related_name="actor")
+
+in m2m field need to specify related_name
+
+*admin.py*
+    from apps.autocomplete.widgets import *
+  
+    class FilmAdmin(AutocompleteModelAdmin):
+        related_search_fields = { 
+
+                'type': ('title',),
+                'actor': ('^name',),
+                'director': ('^name',),
+        }
+    admin.site.register( Film, FilmAdmin )
+
+"related_search_fields" parameter is used to specify on what fields you want to search 'actor' and 'director' ties are the names given in "related_name" query syntax is similar to [searching in admin panel](http://docs.djangoproject.com/en/dev/ref/contrib/admin/#django.contrib.admin.ModelAdmin.search_fields)
+
+I use the " 'actor': ('^name',) " operator ^ means the beginning of the field. and eventually will be formed about the substitution request form For example, if related_search_fieldsis set to ('^name',') and a user searches for john lennon, Django will do the equivalent of this SQL WHERE clause:
+
+WHERE name ILIKE 'john%' AND name ILIKE 'lennon%'
+
