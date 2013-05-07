@@ -1,9 +1,129 @@
-jQuery.autocomplete = function(input, options) {
+django.jQuery(document).ready(function(){
+	// --- удаление изначально выбраных элементов ---
+	django.jQuery(".to_delete").click(function () {django.jQuery(this).remove();});
+
+	// --- добавляю автозаполнение для уже показываемых элементов ---
+	initAutocomplete();
+
+	setTimeout(function() {
+		// Ждем пока всё загрузится
+		console.log(django.jQuery(".add-row td a"));
+
+		// --- добавляю автозаполнение для новых элементов ---
+		django.jQuery(".add-row td a").click( initAutocomplete );
+
+	}, 500);
+
+});
+
+
+
+
+function initAutocomplete() {
+	django.jQuery.each( django.jQuery(".to_autocomplete") , function(key, value) { 
+		var obj = django.jQuery(value);
+		var obj_name = obj.attr('id').replace("lookup_",""); ;
+		if (obj_name.search("__prefix__")==-1){
+			console.log("to_autocomplete",obj_name,value);
+			obj.autocomplete("../search/").removeClass("to_autocomplete");
+		}
+	});
+}
+
+
+
+function showAutocompletePopup(triggeringLink) {
+	var name = triggeringLink.id.replace(/^add_/, '');
+	name = id_to_windowname(name);
+	href = triggeringLink.href
+	if (href.indexOf('?') == -1) {
+		href += '?_popup=2';
+	} else {
+		href  += '&_popup=2';
+	}
+	var win = window.open(href, name, 'height=500,width=800,resizable=yes,scrollbars=yes');
+	win.focus();
+	return false;
+}
+
+function dismissAddAnotherPopup(win, newId, newRepr) {
+	// newId and newRepr are expected to have previously been escaped by
+	// django.utils.html.escape.
+	newId = html_unescape(newId);
+	newRepr = html_unescape(newRepr);
+	var name = windowname_to_id(win.name);
+
+	odj_name = name.replace("id_",""); 
+
+	//console.log('Autocomplete: dismissAddAnotherPopup', name,newId, newRepr);
+	//console.log(odj_name, django.jQuery('#lookup_'+odj_name));
+
+	autocomplete_mode = django.jQuery('#lookup_'+odj_name).attr( 'autocomplete_mode' );
+
+	//console.log(autocomplete_mode);
+
+	if (autocomplete_mode=="ForeignKey"){
+		// --- подставляем значение из попапа ---
+		django.jQuery("#id_"+odj_name).val( newId );
+		django.jQuery("#lookup_"+odj_name).val( newRepr );
+		//console.log('added');
+		win.close();
+	}else if(autocomplete_mode=="ManyToMany"){
+		// --- добавляю новый элемент и значение из попапа ---
+		django.jQuery('<div class="to_delete deletelink"><input type="hidden" name="'+odj_name+'" value="'+newId+'"/>'+newRepr+'</div>')
+		.click(function () {django.jQuery(this).remove();})
+		.appendTo('#box_'+odj_name);
+		// очищаем текстовое поле
+		django.jQuery('#lookup_'+odj_name).val( '' );
+		win.close();
+	}else{
+		// --- повторяем стандартное поведение, мало ли что :) ---
+		newId = html_unescape(newId);
+		newRepr = html_unescape(newRepr);
+		var name = windowname_to_id(win.name);
+		var elem = document.getElementById(name);
+		if (elem) {
+			if (elem.nodeName == 'SELECT') {
+				var o = new Option(newRepr, newId);
+				elem.options[elem.options.length] = o;
+				o.selected = true;
+			} else if (elem.nodeName == 'INPUT') {
+				if (elem.className.indexOf('vManyToManyRawIdAdminField') != -1 && elem.value) {
+					elem.value += ',' + newId;
+				} else {
+					elem.value = newId;
+				}
+			}
+		} else {
+			var toId = name + "_to";
+			elem = document.getElementById(toId);
+			var o = new Option(newRepr, newId);
+			SelectBox.add_to_cache(toId, o);
+			SelectBox.redisplay(toId);
+		}
+		win.close();
+
+	}
+}
+
+
+function autocomplete_liFormat (row, i, num) {
+	var result = row[0] ;
+	return result;
+}
+
+function autocomplete_delete(obj) {
+	parent = django.jQuery(obj).parent();
+	console.log('autocomplete_to_delete',parent);
+	django.jQuery("input",parent).val( '' );
+}
+
+django.jQuery.autocomplete = function(input, options) {
 	// Create a link to self
 	var me = this;
 
 	// Create jQuery object for input element
-	var $input = $(input).attr("autocomplete", "off");
+	var $input = django.jQuery(input).attr("autocomplete", "off");
 
 	// Apply inputClass if necessary
 	if (options.inputClass) $input.addClass(options.inputClass);
@@ -11,12 +131,12 @@ jQuery.autocomplete = function(input, options) {
 	// Create results
 	var results = document.createElement("div");
 	// Create jQuery object for results
-	var $results = $(results);
+	var $results = django.jQuery(results);
 	$results.hide().addClass(options.resultsClass).css("position", "absolute");
 	if( options.width > 0 ) $results.css("width", options.width);
 
 	// Add to body element
-	$("body").append(results);
+	django.jQuery("body").append(results);
 
 	input.autocompleter = me;
 
@@ -127,7 +247,7 @@ jQuery.autocomplete = function(input, options) {
 
  	function moveSelect(step) {
 
-		var lis = $("li", results);
+		var lis = django.jQuery("li", results);
 		if (!lis) return;
 
 		active += step;
@@ -140,7 +260,7 @@ jQuery.autocomplete = function(input, options) {
 
 		lis.removeClass("ac_over");
 
-		$(lis[active]).addClass("ac_over");
+		django.jQuery(lis[active]).addClass("ac_over");
 
 		// Weird behaviour in IE
 		// if (lis[active] && lis[active].scrollIntoView) {
@@ -150,9 +270,9 @@ jQuery.autocomplete = function(input, options) {
 	};
 
 	function selectCurrent() {
-		var li = $("li.ac_over", results)[0];
+		var li = django.jQuery("li.ac_over", results)[0];
 		if (!li) {
-			var $li = $("li", results);
+			var $li = django.jQuery("li", results);
 			if (options.selectOnly) {
 				if ($li.length == 1) li = $li[0];
 			} else if (options.selectFirst) {
@@ -173,13 +293,32 @@ jQuery.autocomplete = function(input, options) {
 			li.extra = [];
 			li.selectValue = "";
 		}
-		var v = $.trim(li.selectValue ? li.selectValue : li.innerHTML);
+		var v = django.jQuery.trim(li.selectValue ? li.selectValue : li.innerHTML);
 		input.lastSelected = v;
 		prev = v;
 		$results.html("");
 		$input.val(v);
 		hideResultsNow();
-		if (options.onItemSelect) setTimeout(function() { options.onItemSelect(li) }, 1);
+		if (options.onItemSelect){
+			setTimeout(function() { options.onItemSelect(li) }, 1);
+		}else{
+			autocomplete_mode = options.lookup_obj.attr('autocomplete_mode');
+			if (autocomplete_mode == "ForeignKey"){
+				if( li == null ) var sValue = '';
+				if( !!li.extra ) var sValue = li.extra[0];
+				else var sValue = li.selectValue;
+				django.jQuery("input:hidden",options.lookup_obj.parent()).val( sValue );
+			}else if(autocomplete_mode == "ManyToMany"){
+				//if( li == null ) return
+				obj_name = options.lookup_obj.attr('id').replace("lookup_",""); ;
+				//console.log('obj_name',obj_name);
+				// --- Создаю новый элемент ---
+				django.jQuery('<div class="to_delete deletelink"><input type="hidden" name="'+obj_name+'" value="'+li.extra[0]+'"/>'+li.selectValue+'</div>')
+				.click(function () {django.jQuery(this).remove();})
+				.appendTo("#box_"+obj_name);
+				django.jQuery("#lookup_"+obj_name).val( '' );
+			}
+		}
 	};
 
 	// selects a portion of the input string
@@ -254,7 +393,7 @@ jQuery.autocomplete = function(input, options) {
 			// if the field no longer has focus or if there are no matches, do not display the drop down
 			if( !hasFocus || data.length == 0 ) return hideResultsNow();
 
-			if ($.browser.msie) {
+			if (django.jQuery.browser && django.jQuery.browser.msie) {
 				// we put a styled iframe behind the calendar so HTML SELECT elements don't show through
 				$results.append(document.createElement('iframe'));
 			}
@@ -272,7 +411,7 @@ jQuery.autocomplete = function(input, options) {
 		var parsed = [];
 		var rows = data.split(options.lineSeparator);
 		for (var i=0; i < rows.length; i++) {
-			var row = $.trim(rows[i]);
+			var row = django.jQuery.trim(rows[i]);
 			if (row) {
 				parsed[parsed.length] = row.split(options.cellSeparator);
 			}
@@ -307,9 +446,9 @@ jQuery.autocomplete = function(input, options) {
 			}
 			li.extra = extra;
 			ul.appendChild(li);
-			$(li).hover(
-				function() { $("li", ul).removeClass("ac_over"); $(this).addClass("ac_over"); active = $("li", ul).indexOf($(this).get(0)); },
-				function() { $(this).removeClass("ac_over"); }
+			django.jQuery(li).hover(
+				function() { django.jQuery("li", ul).removeClass("ac_over"); django.jQuery(this).addClass("ac_over"); active = django.jQuery("li", ul).indexOf(django.jQuery(this).get(0)); },
+				function() { django.jQuery(this).removeClass("ac_over"); }
 			).click(function(e) { e.preventDefault(); e.stopPropagation(); selectItem(this) });
 		}
 		return ul;
@@ -323,7 +462,7 @@ jQuery.autocomplete = function(input, options) {
 			receiveData(q, data);
 		// if an AJAX url has been supplied, try loading the data now
 		} else if( (typeof options.url == "string") && (options.url.length > 0) ){
-			$.get(makeUrl(q), function(data) {
+			django.jQuery.get(makeUrl(q), function(data) {
 				data = parseData(data);
 				addToCache(q, data);
 				receiveData(q, data);
@@ -388,7 +527,7 @@ jQuery.autocomplete = function(input, options) {
 		if (data) {
 			findValueCallback(q, data);
 		} else if( (typeof options.url == "string") && (options.url.length > 0) ){
-			$.get(makeUrl(q), function(data) {
+			django.jQuery.get(makeUrl(q), function(data) {
 				data = parseData(data)
 				addToCache(q, data);
 				findValueCallback(q, data);
@@ -453,7 +592,7 @@ jQuery.autocomplete = function(input, options) {
 	}
 }
 
-jQuery.fn.autocomplete = function(url, options, data) {
+django.jQuery.fn.autocomplete = function(url, options, data) {
 	// Make sure options exists
 	options = options || {};
 	// Set url as option
@@ -461,40 +600,52 @@ jQuery.fn.autocomplete = function(url, options, data) {
 	// set some bulk local data
 	options.data = ((typeof data == "object") && (data.constructor == Array)) ? data : null;
 
+	lookup_obj = django.jQuery(this);
+	options.lookup_obj = lookup_obj;
+
+	options.extraParams = options.extraParams || {
+		search_fields: lookup_obj.attr('search_fields'),
+		app_label: lookup_obj.attr('app_label'),
+		model_name: lookup_obj.attr('model_name')
+	}
+
+	//console.log(options.extraParams);
+
 	// Set default values for required options
 	options.inputClass = options.inputClass || "ac_input";
 	options.resultsClass = options.resultsClass || "ac_results";
 	options.lineSeparator = options.lineSeparator || "\n";
 	options.cellSeparator = options.cellSeparator || "|";
-	options.minChars = options.minChars || 1;
-	options.delay = options.delay || 400;
+	options.minChars = options.minChars || 2;
+	options.delay = options.delay || 10;
 	options.matchCase = options.matchCase || 0;
 	options.matchSubset = options.matchSubset || 1;
-	options.matchContains = options.matchContains || 0;
-	options.cacheLength = options.cacheLength || 1;
+	options.matchContains = options.matchContains || 1;
+	options.cacheLength = options.cacheLength || 0;
 	options.mustMatch = options.mustMatch || 0;
 	options.extraParams = options.extraParams || {};
 	options.loadingClass = options.loadingClass || "ac_loading";
-	options.selectFirst = options.selectFirst || false;
+	options.selectFirst = options.selectFirst || true;
 	options.selectOnly = options.selectOnly || false;
-	options.maxItemsToShow = options.maxItemsToShow || -1;
+	options.maxItemsToShow = options.maxItemsToShow || 10;
 	options.autoFill = options.autoFill || false;
 	options.width = parseInt(options.width, 10) || 0;
+	options.formatItem = options.formatItem || autocomplete_liFormat
 
 	this.each(function() {
 		var input = this;
-		new jQuery.autocomplete(input, options);
+		new django.jQuery.autocomplete(input, options);
 	});
 
 	// Don't break the chain
 	return this;
 }
 
-jQuery.fn.autocompleteArray = function(data, options) {
+django.jQuery.fn.autocompleteArray = function(data, options) {
 	return this.autocomplete(null, options, data);
 }
 
-jQuery.fn.indexOf = function(e){
+django.jQuery.fn.indexOf = function(e){
 	for( var i=0; i<this.length; i++ ){
 		if( this[i] == e ) return i;
 	}
