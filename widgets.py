@@ -10,7 +10,7 @@ from django.contrib import admin
 
 from django.db import models
 
-import operator, settings
+import operator
 from django.http import HttpResponse, HttpResponseNotFound
 from django.db.models.query import QuerySet
 from django.utils.encoding import smart_str
